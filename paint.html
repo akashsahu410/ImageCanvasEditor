@@ -1,0 +1,617 @@
+<!doctype html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="jscolor.js"></script>
+    <script type="text/javascript" src="https://code.jquery.com/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <link rel="stylesheet" href="upload_img.css">
+    <script src="upload_img.js"></script>
+
+
+    <style>
+        body{ background-color: ivory; }
+        #canvas{
+            border:1px solid black;
+        }
+        
+        textarea {
+            height:100%;
+            width:100%;
+            resize:none; 
+            border:none;
+            padding:0px; 
+            margin:0px;
+            background: transparent;
+            font-size: 12px;
+        }
+
+    </style>
+
+</head>
+<body>
+    <input type="file" accept="image/*" onchange="loadFile(event)">
+        <!--<img id="output"/>-->
+    <div class="text-center">
+    <div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+          <div class="modal-content">
+            <div class="indicator"></div>
+            <div class="modal-header">
+              <h5 class="modal-title" id="exampleModalLabel"></h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="media mb-3">
+               
+                <div class="media-body">
+                  <div class="position-relative">
+                    <input type="file" class="d-none" accept="image/*" onchange="previewFiles()" id="inputUp" multiple>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="row col-md-12 ml-auto mr-auto preview"></div>
+            <div class="modal-footer">
+              <button class="btn" data-dismiss="modal">Close</button>
+              <span class="btn" data-dismiss="modal">Save changes</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+        <h4>Drag-Draw Tools</h4>
+        <button class="btn" id="line" data-datac="line">Line</button>
+        <button class="btn" data-datac="rectangle">Rectangle</button>
+        <button class="btn" data-datac="circle">Circle</button>
+        <button class="btn" data-datac="arrow">Arrow</button>
+        <button class="btn" id="text" data-datac="text">Text</button>
+        <button class="btn" data-datac="image">Image</button>
+        Color: <input value="#000" data-jscolor="{}" id="current_color">
+        <button data-toggle="modal" data-target="#exampleModal">Upload Image</button>
+        <button id="undo" onclick="undo()">Undo</button>
+        <button id="redo" onclick="redo()">Redo</button>
+        <button onclick="clearCanvas()">Clear</button>
+        <button id="export">Export</button>
+        <br><br>
+    
+        <label for>Width :</label>
+         <select name="width" id="width">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="6">6</option>
+            <option value="8">8</option>
+            <option value="10">10</option>
+            <option value="12">12</option>
+            <option value="14">14</option>
+            <option value="16">16</option>
+            <option value="18">18</option>
+            <option value="20">20</option>
+            <option value="24">24</option>
+            <option value="30">30</option>
+        </select>
+
+        <label for>Font Size :</label>
+         <select name="fontSize" id="fontSize">
+            <option value="12">12</option>
+            <option value="14">14</option>
+            <option value="16">16</option>
+            <option value="18">18</option>
+            <option value="20">20</option>
+            <option value="22">22</option>
+            <option value="24">24</option>
+            <option value="26">26</option>
+            <option value="28">28</option>
+            <option value="36">36</option>
+            <option value="48">48</option>
+            <option value="72">72</option>
+            <option value="72">96</option>
+        </select>
+    </div>
+
+    <div class="wrap">
+        <canvas id="canvas"></canvas>
+    </div>
+    
+    
+    <script>
+    var lines=[];
+    var redo_stack = []
+    var data;
+    var selectedWidth;
+    var selectedFontWidth;
+
+    
+$(function(){
+
+    // bind the ctrl+z to undo / ctrl+y to redo function 
+    $(document).on("keypress", function(e) {
+    //    console.log(e.keyCode);
+       /*ctrl+z*/
+       if(e.keyCode==26)
+       {
+          undo()
+       }
+       /*ctrl+y*/
+       else if(e.keyCode==25)
+       {
+          redo()
+       }
+    });
+
+    var canvas=document.getElementById("canvas");
+    var ctx=canvas.getContext("2d");
+    var canvasOffset=$("#canvas").offset();
+    var offsetX=canvasOffset.left;
+    var offsetY=canvasOffset.top;
+
+    selectedWidth = $('#width').children("option:selected").val();
+    console.log("width",selectedWidth)
+
+    selectedFontWidth = $('#fontSize').children("option:selected").val();
+    console.log("font Size",selectedFontWidth)
+
+    console.log("offsetX",offsetX)
+    console.log("offsetY",offsetY)
+
+    var startX,startY,mouseX,mouseY;
+    var isDown=false;
+
+    // change according to drawing tools type (line,rectangele,square,circle,arrow)
+    var current_Tool = "line";
+    var current_color = "black"
+    
+    var img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=start;
+    
+    loadFile = function(event) {
+    
+        let imgSrc = URL.createObjectURL(event.target.files[0]);
+        //img.src="https://www.pyramidcafe.in/images/amr/images/slider/pyramid.jpg";
+        img.src=imgSrc;
+    }
+    
+    function start(){
+        canvas.width=canvas.width=img.width;
+        canvas.height=img.height;
+        
+        console.log("canvas.width",canvas.width)
+        console.log("canvas.height",canvas.height)
+
+        ctx.strokeStyle=current_color;
+        $('#current_color').val("#000")
+        ctx.lineWidth=1;
+        $("#line").css("background-color", "grey");
+
+        $("#canvas").mousedown(function(e){handleMouseDown(e);});
+        $("#canvas").mousemove(function(e){handleMouseMove(e);});
+        $("#canvas").mouseup(function(e){handleMouseUp(e);});
+        $("#canvas").mouseout(function(e){handleMouseUp(e);});
+
+        // redraw the image
+        drawTheImage(img);
+
+    }
+
+    // to set the current color in textarea
+    $("#current_color").on({
+        click: function(){
+            current_color = $(this).val()
+            $('textarea').css('color',current_color)
+        },
+
+        mousedown: function(){
+            current_color = $(this).val()
+            $('textarea').css('color',current_color)
+        },
+
+        change: function(){
+            current_color = $(this).val()
+            $('textarea').css('color',current_color)
+        },
+        input: function(){
+            current_color = $(this).val()
+            $('textarea').css('color',current_color)
+        },
+    })
+        
+
+    // To select the current color for drawing tools
+    useCurrentColor = function() { 
+        current_color = $('#current_color').val()
+        ctx.strokeStyle=current_color;
+    }
+
+    // redraw the tools after undo and redo of drawing tools
+    function redrawTools(){
+        // clear the canvas
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+
+        // to use the current selected color
+        useCurrentColor()
+
+        // redraw the image
+        drawTheImage(img);
+        console.log("existig tools",lines)
+
+        // redraw all previous lines
+        for(var i=0;i<lines.length;i++){
+            drawTool(lines[i]);
+        }
+    }
+
+    function drawTools(toX,toY){
+        // clear the canvas
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+
+        // to use the current selected color
+        useCurrentColor()
+
+        // redraw the image
+        drawTheImage(img);
+        // console.log("existig tools",lines)
+        
+        // redraw all previous lines
+        for(var i=0;i<lines.length;i++){
+            drawTool(lines[i]);
+        }
+
+        // draw the current line
+        drawTool({"type":current_Tool,x1:startX,y1:startY,x2:mouseX,y2:mouseY,"color":current_color,"image":$("#uploaded_img").attr('src'),'width':selectedWidth});
+        
+    }
+
+    function drawTheImage(img){
+        ctx.drawImage(img,0,0);
+        ctx.globalAlpha=1.00;
+    }
+
+    // To draw the ellipse or circle
+    function drawEllipse(x1, y1, x2, y2) {
+        var radiusX = (x2 - x1) * 0.5,   /// radius for x based on input
+            radiusY = (y2 - y1) * 0.5,   /// radius for y based on input
+            centerX = x1 + radiusX,      /// calc center
+            centerY = y1 + radiusY,
+            step = 0.01,                 /// resolution of ellipse
+            a = step,                    /// counter
+            pi2 = Math.PI * 2 - step;    /// end angle
+
+        /// set start point at angle 0
+        ctx.moveTo(centerX + radiusX * Math.cos(0),
+                centerY + radiusY * Math.sin(0));
+
+        /// create the ellipse    
+        for(; a < pi2; a += step) {
+            ctx.lineTo(centerX + radiusX * Math.cos(a),
+                    centerY + radiusY * Math.sin(a));
+        }
+    }
+
+    // To draw the arrow 
+    function drawLineWithArrowhead(p0,p1,headLength){
+        // constants (could be declared as globals outside this function)
+        var PI=Math.PI;
+        var degreesInRadians225=225*PI/180;
+        var degreesInRadians135=135*PI/180;
+
+        // calc the angle of the line
+        var dx=p1.x-p0.x;
+        var dy=p1.y-p0.y;
+        var angle=Math.atan2(dy,dx);
+
+        // calc arrowhead points
+        var x225=p1.x+headLength*Math.cos(angle+degreesInRadians225);
+        var y225=p1.y+headLength*Math.sin(angle+degreesInRadians225);
+        var x135=p1.x+headLength*Math.cos(angle+degreesInRadians135);
+        var y135=p1.y+headLength*Math.sin(angle+degreesInRadians135);
+
+        // draw the line from p0 to p1
+        ctx.moveTo(p0.x,p0.y);
+        ctx.lineTo(p1.x,p1.y);
+        // draw partial arrowhead at 225 degrees
+        ctx.moveTo(p1.x,p1.y);
+        ctx.lineTo(x225,y225);
+        // draw partial arrowhead at 135 degrees
+        ctx.moveTo(p1.x,p1.y);
+        ctx.lineTo(x135,y135);
+       
+    }
+
+    // Filter the values of drawing Array to remove the undefined values
+    filter_Values = function(){
+        lines = lines.filter(function( element ) {
+            return element !== undefined;
+        });
+        redo_stack = redo_stack.filter(function( element ) {
+            return element !== undefined;
+        });
+    }
+    // Undo the last applied frawing tool
+    undo = function() { 
+        // console.log("undo stack",lines)
+        // console.log("redo stack",redo_stack)
+        data = lines.pop()
+        redo_stack.push(data)
+        filter_Values()
+        redrawTools()
+    }
+
+    // Redo the last applied frawing tool
+    redo = function() { 
+        data = redo_stack.pop()
+        lines.push(data)
+        // console.log("undo stack",lines)
+        // console.log("redo stack",redo_stack)
+        filter_Values()
+        redrawTools()
+    }
+
+    // To clear the canvas except the image
+    clearCanvas = function() { 
+        console.log("clear the canvas completely")
+        redo_stack = []
+        lines = []
+        redrawTools()
+    }
+    applyText = function(textarea_id){
+        let top_coords = $(".ui-draggable").css("top");
+        let left_coords = $(".ui-draggable").css("left");
+        // alert(top_coords,left_coords)
+        
+        top_coords = top_coords.replace('px', '');
+        left_coords = left_coords.replace('px', '');
+
+        let {x,y}=getScroll();
+
+        let exactX = left_coords-offsetX
+        let exactY = top_coords-offsetY+y+33
+
+        let textareaId = $(textarea_id).attr('id')
+        let value_got = $("#"+textareaId).val()
+        value_got = value_got.split('\n');
+
+        // console.log("textarea value",value_got)
+
+        $("#"+textareaId).parent().remove()
+
+        let new_obj = {"type":"text",x1:parseInt(exactX),y1:parseInt(exactY),"color":current_color,"fontSize":selectedFontWidth,
+            "fontStyle":"Arial","text":value_got}
+
+        lines.push(new_obj)
+        drawTool(new_obj)
+        current_Tool = ""
+        $("#text").css("background-color", "white");
+    }
+
+
+    $(document).on("click",".close_tag",function() {
+        $(this).parent().remove()
+    });
+
+    textareaElement = function(){
+        var new_offset = {top:offsetY, left:offsetX};
+        var new_width = 200;
+	    var new_height = 150;
+        var dynamic_id = "go"+makeid(3)
+        $('<div id="addText'+makeid(3)+'"><textarea id='+dynamic_id+'></textarea><button class="btn btn-sm" onclick="applyText('+dynamic_id+')">Apply</button><button class="btn btn-sm close_tag">Close</button></div>').width(new_width)
+            .height(new_height)
+            .draggable({
+                    cancel: "text",
+                    start: function (){
+                        $("#"+dynamic_id).focus();
+                    },
+                    stop: function (){
+                        $("#"+dynamic_id).focus();
+                    } 
+                })
+            .resizable()
+            .css({
+                    'position'	        : 'absolute',
+                    'border-color'      : 'white',
+                    'border-width'      : '1px',
+                    'border-style'	    : 'dashed',
+            })
+            .offset(new_offset)
+            .appendTo('body');
+            $("#"+dynamic_id).css({'font-size':selectedFontWidth+"px",color:current_color})
+    }
+
+    // To select the current drawing tool
+    $('.btn').click(function() {
+        var d = $(this).data('datac');    
+        
+        // to hide or show the textarea box on canvas
+        if(d == "text"){
+            textareaElement()
+        }
+        else{
+            $("[id^='addText']" ).remove()
+        }
+
+        $(this).css("background-color", "grey");
+        $('.btn').not(this).css("background-color", "white");
+        current_Tool = d 
+        
+    });
+
+    // To export the image as jpg/png
+    $('#export').click(function() {
+        var link = document.createElement('a');
+        link.download = 'download.png';
+        link.href = canvas.toDataURL()
+        link.click();
+        link.delete;
+    })
+    
+    
+    function drawTool(tool){
+        ctx.beginPath();
+        
+        current_color = $('#current_color').val()
+        ctx.strokeStyle=tool["color"];
+        ctx.lineWidth = tool["width"];
+
+        if(tool["type"] == "line"){
+            ctx.moveTo(tool.x1, tool.y1);
+            ctx.lineTo(tool.x2, tool.y2);
+        }
+        else if(tool["type"] == "rectangle"){
+            ctx.rect(tool.x1, tool.y1, tool.x2-tool.x1, tool.y2-tool.y1);
+        }
+        else if(tool["type"] == "circle"){
+            drawEllipse(tool.x1, tool.y1, tool.x2, tool.y2)
+        }
+        else if(tool["type"] == "arrow"){
+            var p0={x:tool.x1,y:tool.y1};
+            var p1={x:tool.x2,y:tool.y2};
+            drawLineWithArrowhead(p0,p1,15);
+        }
+        else if(tool["type"] == "image"){
+            const img1 = new Image()
+            img1.src = tool["image"]
+            // img.id = makeid(7)
+            ctx.drawImage(img1, tool.x1, tool.y1, tool.x2-tool.x1, tool.y2-tool.y1);
+        }
+        else if(tool["type"] == "text"){
+            ctx.font = tool["fontSize"]+"px "+tool["fontStyle"];
+            ctx.fillStyle = tool["color"];
+            let lineheight = tool["fontSize"];
+            
+            
+            // add multiline text 
+            for (var i = 0; i<tool["text"].length; i++){
+                console.log("line height",(i*lineheight))
+                ctx.fillText(tool["text"][i], tool["x1"], tool["y1"]+ (i*lineheight*1.5));
+            }
+        }
+        
+        ctx.stroke();
+    }
+
+    function handleMouseDown(e){
+      e.stopPropagation();
+      e.preventDefault();
+
+      let {x,y}=getScroll();
+
+    //   console.log("x---->",parseInt(e.clientX-offsetX)+x)
+    //   console.log("y---->",parseInt(e.clientY-offsetY)+y)
+
+      mouseX=parseInt(e.clientX-offsetX)+x;
+      mouseY=parseInt(e.clientY-offsetY)+y;
+
+      // Put your mousedown stuff here
+      startX=mouseX;
+      startY=mouseY;
+      isDown=true;
+    
+    }
+
+
+    function handleMouseUp(e){
+      e.stopPropagation();
+      e.preventDefault();
+
+      // Put your mouseup stuff here
+      isDown=false;
+      if(current_Tool != "text"){
+          if((startX && startY) && (current_Tool) && (startX >= 0 && startY >= 0 && mouseX >= 0 && mouseY >= 0)){
+              lines.push({"type":current_Tool,x1:startX,y1:startY,x2:mouseX,y2:mouseY,"color":current_color,"image":$("#uploaded_img").attr('src'),
+              'width':selectedWidth});
+          }    
+      }
+
+    //   let jsonObject = lines.map(JSON.stringify);
+    //   console.log("jsonObject",jsonObject)
+    //   let uniqueSet = new Set(jsonObject);
+    //   let uniqueArray = Array.from(uniqueSet).map(JSON.parse);
+    //   lines = uniqueArray
+
+        let newArr = lines.reduce((acc, current) => {
+        const x = acc.find(item => ( item.x1 === current.x1 && item.x2 === current.x2 && item.y1 === current.y1 && item.y2 === current.y2));
+        if (!x) {
+            return acc.concat([current]);
+        } else {
+            return acc;
+        }
+        }, []);
+        lines = newArr
+        // console.log("lines",lines)
+        // console.log("redo",redo_stack)
+        console.log("lines",lines)
+    }
+
+    // Get the current coordinates on changing the position of scrollbar
+    getScroll = () => {
+        var position = document.getElementById('canvas');
+        let x,y;
+        if (window.pageYOffset != undefined) {
+            // console.log(" X-axis : " 
+            // + pageXOffset + " Y-axis : " + pageYOffset)
+            x=parseInt(pageXOffset)
+            y=parseInt(pageYOffset)
+        } else {
+            var x_axis, y_axis, doc = document,
+                ele = doc.documentElement,
+                b = doc.body;
+            x_axis = ele.scrollLeft || b.scrollLeft || 0;
+            y_axis = ele.scrollTop || b.scrollTop || 0;
+            console.log(" X-axis : "
+            + x_axis + " Y-axis : " + y_axis)
+            x=parseInt(x_axis-offsetX)
+            y=parseInt(y_axis-offsetY)
+        }
+        return {x,y}
+    }
+
+    function handleMouseMove(e){
+        let {x,y}=getScroll();
+
+        // console.log("x---->",parseInt(e.clientX-offsetX)+x)
+        // console.log("y---->",parseInt(e.clientY-offsetY)+y)
+
+        if(!isDown){return;}
+        e.stopPropagation();
+        e.preventDefault();
+        mouseX=parseInt(e.clientX-offsetX)+x
+        mouseY=parseInt(e.clientY-offsetY)+y
+
+        // Put your mousemove stuff here
+        drawTools(mouseX,mouseY);
+    }
+    
+
+    // to change the line width of drawing tools 
+    $("#width").change(function(){
+        selectedWidth = $(this).children("option:selected").val();
+    });
+
+    // to change the font size of text
+    $("#fontSize").change(function(){
+        selectedFontWidth = $(this).children("option:selected").val();
+        $('textarea').css({'font-size':selectedFontWidth+'px','color':current_color})
+    });
+
+    // update_magnified_canvas_size = function(){
+    //     $canvas.css("width", canvas.width * magnification);
+    //     $canvas.css("height", canvas.height * magnification);
+    //     update_canvas_rect();
+    // }
+
+}); // end $(function(){});
+
+
+
+
+</script>
+    
+</body>
+</html>
